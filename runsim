@@ -1,2 +1,22 @@
 bin/usimm input/1channel.cfg input/comm1 input/comm2 > output/c1-c2-1 
 bin/usimm input/1channel.cfg input/black input/freq > output/bl-fr-1 
+
+
+get_edp () { grep "Energy Delay product" "$1" | awk '{print $(NF-1)}'; }
+
+# New-scheduler results
+edp_new_c1c2=$(get_edp output/c1-c2-1)
+edp_new_blfr=$(get_edp output/bl-fr-1)
+
+# Baseline results (put these reference files in baseline/)
+edp_base_c1c2=$(get_edp baseline/c1-c2-1)
+edp_base_blfr=$(get_edp baseline/bl-fr-1)
+
+
+avg_new=$(awk  "BEGIN{print ($edp_new_c1c2  + $edp_new_blfr )/2}")
+avg_base=$(awk "BEGIN{print ($edp_base_c1c2 + $edp_base_blfr)/2}")
+
+echo
+printf "EDP  comm1+comm2 : baseline=%s  current=%s\n" "$edp_base_c1c2" "$edp_new_c1c2"
+printf "EDP  black+freq  : baseline=%s  current=%s\n" "$edp_base_blfr" "$edp_new_blfr"
+printf "Average EDP      : baseline=%s  current=%s\n" "$avg_base"      "$avg_new"
