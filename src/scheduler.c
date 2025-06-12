@@ -1,17 +1,11 @@
 #include <stdio.h>
 #include "utlist.h"
 #include "utils.h"
+#include "params.h"
 
 #include "memory_controller.h"
 
 extern long long int CYCLE_VAL;
-
-void init_scheduler_vars()
-{
-	// initialize all scheduler variables here
-
-	return;
-}
 
 // write queue high water mark; begin draining writes if write queue exceeds this value
 #define HI_WM 40
@@ -19,8 +13,38 @@ void init_scheduler_vars()
 // end write queue drain once write queue has this many writes in it
 #define LO_WM 20
 
+#define ROW_IDLE 40 // cycles a row may stay open with no hits
+
 // 1 means we are in write-drain mode for that channel
 int drain_writes[MAX_NUM_CHANNELS];
+
+long long int last_col_cycle[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+
+void init_scheduler_vars()
+{
+	// initialise timeout table
+	for (int channel = 0; channel < MAX_NUM_CHANNELS; channel++)
+		for (int r = 0; r < MAX_NUM_RANKS; r++)
+			for (int b = 0; b < MAX_NUM_BANKS; b++)
+				last_col_cycle[channel][r][b] = -1;
+}
+
+// helper: does any queue entry still hit the given open row?
+static int other_hit_exists(int channel, int rank, int bank, long long int row)
+{
+	request_t *req;
+	LL_FOREACH(read_queue_head[channel], req)
+	if (req->dram_addr.rank == rank &&
+	    req->dram_addr.bank == bank &&
+	    req->dram_addr.row == row)
+		return 1;
+	LL_FOREACH(write_queue_head[channel], req)
+	if (req->dram_addr.rank == rank &&
+	    req->dram_addr.bank == bank &&
+	    req->dram_addr.row == row)
+		return 1;
+	return 0;
+}
 
 /* Each cycle it is possible to issue a valid command from the read or write queues
    OR
@@ -44,62 +68,91 @@ int drain_writes[MAX_NUM_CHANNELS];
 
 void schedule(int channel)
 {
-	request_t *req = NULL;	    // iterator
-	request_t *best_req = NULL; // what we’ll finally issue
+	request_t *req = NULL;
+	request_t *best_req = NULL;
 
-
-	//  Update drain_writes[channel] state (same logic as baseline)
-	if (drain_writes[channel] && (write_queue_length[channel] > LO_WM))
-		drain_writes[channel] = 1; // stay draining
+	// write-drain bookkeeping
+	if (drain_writes[channel] && write_queue_length[channel] > LO_WM)
+		drain_writes[channel] = 1;
 	else
-		drain_writes[channel] = 0; // stop draining
+		drain_writes[channel] = 0;
 
-	if (write_queue_length[channel] > HI_WM) // queue too full   
-		drain_writes[channel] = 1;	 // start drain    
-	else if (!read_queue_length[channel])	 // no reads pending 
-		drain_writes[channel] = 1;	 // drain writes
-
-	// Choose which queue we will look at this cycle
+	if (write_queue_length[channel] > HI_WM ||
+	    !read_queue_length[channel])
+		drain_writes[channel] = 1;
 
 	request_t **head = drain_writes[channel] ? &write_queue_head[channel] : &read_queue_head[channel];
 
-	// Pass 1 – find the oldest row-buffer hit whose command is issuable right now
-
+	// pass 1 : pick oldest row-hit that is issuable
 	LL_FOREACH(*head, req)
 	{
 		if (!req->command_issuable)
 			continue;
-
 		if (req->next_command == COL_READ_CMD ||
 		    req->next_command == COL_WRITE_CMD)
 		{
-			best_req = req; // first issuable hit wins
+			best_req = req;
+			break; // first issuable hit wins
+		}
+	}
+
+	// fallback to FCFS)
+	if (!best_req)
+	{
+		LL_FOREACH(*head, req)
+		if (req->command_issuable)
+		{
+			best_req = req;
 			break;
 		}
 	}
 
-	// Pass 2: if no row-hit, fall back to oldest issuable request
-
-	if (!best_req)
+	// issue chosen command
+	if (best_req)
 	{
-		LL_FOREACH(*head, req)
+		int ch = channel;
+		int rank = best_req->dram_addr.rank;
+		int bank = best_req->dram_addr.bank;
+		long long row = best_req->dram_addr.row;
+		int is_col = (best_req->next_command == COL_READ_CMD ||
+			      best_req->next_command == COL_WRITE_CMD);
+
+		issue_request_command(best_req);
+
+		// remember last column activity for timeout
+		if (is_col)
+			last_col_cycle[ch][rank][bank] = CYCLE_VAL;
+
+		// auto-precharge if this was the last hit to that row
+		if (is_col &&
+		    !other_hit_exists(ch, rank, bank, row) &&
+		    is_autoprecharge_allowed(ch, rank, bank))
+			issue_autoprecharge(ch, rank, bank);
+
+		return; // exactly one command per cycle
+	}
+
+	// idle: consider timing-out an open row
+	if (!command_issued_current_cycle[channel])
+	{
+		for (int r = 0; r < NUM_RANKS; r++)
 		{
-			if (req->command_issuable)
+			for (int b = 0; b < NUM_BANKS; b++)
 			{
-				best_req = req; // first legal cmd in list
-				break;
+				bank_t *bs = &dram_state[channel][r][b];
+				if (bs->state == ROW_ACTIVE &&
+				    last_col_cycle[channel][r][b] >= 0 &&
+				    (CYCLE_VAL - last_col_cycle[channel][r][b]) > ROW_IDLE &&
+				    !other_hit_exists(channel, r, b, bs->active_row) &&
+				    is_precharge_allowed(channel, r, b))
+				{
+					issue_precharge_command(channel, r, b);
+					// count only one precharge per idle cycle
+					return;
+				}
 			}
 		}
 	}
-
-	//  Issue the chosen command (if any)
-	if (best_req)
-	{
-		issue_request_command(best_req);
-		return; // exactly one cmd per cycle
-	}
-
-	// Nothing issuable → remain idle this cycle (NOP)
 }
 
 void scheduler_stats()
