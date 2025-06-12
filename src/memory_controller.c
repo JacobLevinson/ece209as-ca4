@@ -1893,3 +1893,255 @@ void update_memory()
 	return total_rank_power;
 
 }
+
+/////////////////////////////////////////////////
+// COPIED FROM MEMORY_CONTROLLER.H             //
+
+// Moved here from main.c 
+long long int *committed; // total committed instructions in each core
+long long int *fetched;   // total fetched instructions in each core
+
+// contains the states of all banks in the system 
+bank_t dram_state[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+
+// command issued this cycle to this channel
+int command_issued_current_cycle[MAX_NUM_CHANNELS];
+
+// cas command issued this cycle to this channel
+int cas_issued_current_cycle[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS]; // 1/2 for COL_READ/COL_WRITE
+
+// Per channel read queue
+request_t * read_queue_head[MAX_NUM_CHANNELS];
+
+// Per channel write queue
+request_t * write_queue_head[MAX_NUM_CHANNELS];
+
+// issuables_for_different commands
+int cmd_precharge_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+int cmd_all_bank_precharge_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+int cmd_powerdown_fast_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+int cmd_powerdown_slow_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+int cmd_powerup_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+int cmd_refresh_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+
+
+// refresh variables
+long long int next_refresh_completion_deadline[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+long long int last_refresh_completion_deadline[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+int forced_refresh_mode_on[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+int refresh_issue_deadline[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+int issued_forced_refresh_commands[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+int num_issued_refreshes[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+
+long long int read_queue_length[MAX_NUM_CHANNELS];
+long long int write_queue_length[MAX_NUM_CHANNELS];
+
+// Stats
+long long int num_read_merge ;
+long long int num_write_merge ;
+long long int stats_reads_merged_per_channel[MAX_NUM_CHANNELS];
+long long int stats_writes_merged_per_channel[MAX_NUM_CHANNELS];
+long long int stats_reads_seen[MAX_NUM_CHANNELS];
+long long int stats_writes_seen[MAX_NUM_CHANNELS];
+long long int stats_reads_completed[MAX_NUM_CHANNELS];
+long long int stats_writes_completed[MAX_NUM_CHANNELS];
+
+double stats_average_read_latency[MAX_NUM_CHANNELS];
+double stats_average_read_queue_latency[MAX_NUM_CHANNELS];
+double stats_average_write_latency[MAX_NUM_CHANNELS];
+double stats_average_write_queue_latency[MAX_NUM_CHANNELS];
+
+long long int stats_page_hits[MAX_NUM_CHANNELS];
+double stats_read_row_hit_rate[MAX_NUM_CHANNELS];
+
+// Time spent in various states
+long long int stats_time_spent_in_active_standby[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+long long int stats_time_spent_in_active_power_down[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+long long int stats_time_spent_in_precharge_power_down_fast[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+long long int stats_time_spent_in_precharge_power_down_slow[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+long long int stats_time_spent_in_power_up[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+long long int last_activate[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+long long int last_refresh[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+double average_gap_between_activates[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+double average_gap_between_refreshes[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+long long int stats_time_spent_terminating_reads_from_other_ranks[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+long long int stats_time_spent_terminating_writes_to_other_ranks[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+
+// Command Counters
+long long int stats_num_activate_read[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+long long int stats_num_activate_write[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+long long int stats_num_activate_spec[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+long long int stats_num_activate[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+long long int stats_num_precharge[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+long long int stats_num_read[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+long long int stats_num_write[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+long long int stats_num_powerdown_slow[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+long long int stats_num_powerdown_fast[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+long long int stats_num_powerup[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+
+/////////////////////////////////////////////////
+
+/////////////////////////////////////////////////
+// COPIED FROM PARAMS.H                        //
+
+/********************/
+/* Processor params */
+/********************/
+// number of cores in mulicore 
+int NUMCORES;
+
+// processor clock frequency multiplier : multiplying the
+// DRAM_CLK_FREQUENCY by the following parameter gives the processor
+// clock frequency 
+ int PROCESSOR_CLK_MULTIPLIER;
+
+//size of ROB
+ int ROBSIZE ;// 128;		
+
+// maximum commit width
+ int MAX_RETIRE ;// 2;
+
+// maximum instruction fetch width
+ int MAX_FETCH ;// 4;	
+
+// depth of pipeline
+ int PIPELINEDEPTH ;// 5;
+
+
+/*****************************/
+/* DRAM System Configuration */
+/*****************************/
+// total number of channels in the system
+ int NUM_CHANNELS ;// 1;
+
+// number of ranks per channel
+ int NUM_RANKS ;// 2;
+
+// number of banks per rank
+ int NUM_BANKS ;// 8;
+
+// number of rows per bank
+ int NUM_ROWS ;// 32768;
+
+// number of columns per rank
+ int NUM_COLUMNS ;// 128;
+
+// cache-line size (bytes)
+ int CACHE_LINE_SIZE ;// 64;
+
+// total number of address bits (i.e. indicates size of memory)
+ int ADDRESS_BITS ;// 32;
+
+/****************************/
+/* DRAM Chip Specifications */
+/****************************/
+
+// dram frequency (not datarate) in MHz
+ int DRAM_CLK_FREQUENCY ;// 800;
+
+// All the following timing parameters should be 
+// entered in the config file in terms of memory 
+// clock cycles.
+
+// RAS to CAS delay
+ int T_RCD ;// 44;
+
+// PRE to RAS
+ int T_RP ;// 44;
+
+// ColumnRD to Data burst
+ int T_CAS ;// 44;
+
+// RAS to PRE delay
+ int T_RAS ;// 112;
+
+// Row Cycle time
+ int T_RC ;// 156;
+
+// ColumnWR to Data burst
+ int T_CWD ;// 20;
+
+// write recovery time (COL_WR to PRE)
+ int T_WR ;// 48;
+
+// write to read turnaround
+ int T_WTR ;// 24;
+
+// rank to rank switching time
+ int T_RTRS ;// 8;
+
+// Data transfer
+ int T_DATA_TRANS ;// 16;
+
+// Read to PRE
+ int T_RTP ;// 24;
+
+// CAS to CAS
+ int T_CCD ;// 16;
+
+// Power UP time fast
+ int T_XP ;// 20;
+
+// Power UP time slow
+ int T_XP_DLL ;// 40;
+
+// Power down entry
+ int T_CKE ;// 16;
+
+// Minimum power down duration
+ int T_PD_MIN ;// 16;
+
+// rank to rank delay (ACTs to same rank)
+ int T_RRD ;// 20;
+
+// four bank activation window
+ int T_FAW ;// 128;
+
+// refresh interval
+ int T_REFI;
+
+ // refresh cycle time
+ int T_RFC;
+
+/****************************/
+/* VOLTAGE & CURRENT VALUES */
+/****************************/
+
+float VDD;
+
+float IDD0;
+
+float IDD1;
+
+float IDD2P0;
+
+float IDD2P1;
+
+float IDD2N;
+
+float IDD3P;
+
+float IDD3N;
+
+float IDD4R;
+
+float IDD4W;
+
+float IDD5;
+
+/******************************/
+/* MEMORY CONTROLLER Settings */
+/******************************/
+
+// maximum capacity of write queue (per channel)
+ int WQ_CAPACITY ;// 64;
+
+//  int ADDRESS_MAPPING mode
+// 1 is consecutive cache-lines to same row
+// 2 is consecutive cache-lines striped across different banks 
+ int ADDRESS_MAPPING ;// 1;
+
+ // WQ associative lookup 
+ int WQ_LOOKUP_LATENCY;
+
+/////////////////////////////////////////////////

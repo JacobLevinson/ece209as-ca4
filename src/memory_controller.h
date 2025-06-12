@@ -6,8 +6,8 @@
 #define MAX_NUM_BANKS 32
 
 // Moved here from main.c 
-long long int *committed; // total committed instructions in each core
-long long int *fetched;   // total fetched instructions in each core
+extern long long int *committed; // total committed instructions in each core
+extern long long int *fetched;   // total fetched instructions in each core
 
 
 //////////////////////////////////////////////////
@@ -72,82 +72,82 @@ typedef struct bnk
 }bank_t;
 
 // contains the states of all banks in the system 
-bank_t dram_state[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+extern bank_t dram_state[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
 
 // command issued this cycle to this channel
-int command_issued_current_cycle[MAX_NUM_CHANNELS];
+extern int command_issued_current_cycle[MAX_NUM_CHANNELS];
 
 // cas command issued this cycle to this channel
-int cas_issued_current_cycle[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS]; // 1/2 for COL_READ/COL_WRITE
+extern int cas_issued_current_cycle[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS]; // 1/2 for COL_READ/COL_WRITE
 
 // Per channel read queue
-request_t * read_queue_head[MAX_NUM_CHANNELS];
+extern request_t * read_queue_head[MAX_NUM_CHANNELS];
 
 // Per channel write queue
-request_t * write_queue_head[MAX_NUM_CHANNELS];
+extern request_t * write_queue_head[MAX_NUM_CHANNELS];
 
 // issuables_for_different commands
-int cmd_precharge_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
-int cmd_all_bank_precharge_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-int cmd_powerdown_fast_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-int cmd_powerdown_slow_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-int cmd_powerup_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-int cmd_refresh_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern int cmd_precharge_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+extern int cmd_all_bank_precharge_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern int cmd_powerdown_fast_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern int cmd_powerdown_slow_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern int cmd_powerup_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern int cmd_refresh_issuable[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
 
 
 // refresh variables
-long long int next_refresh_completion_deadline[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-long long int last_refresh_completion_deadline[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-int forced_refresh_mode_on[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-int refresh_issue_deadline[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-int issued_forced_refresh_commands[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-int num_issued_refreshes[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int next_refresh_completion_deadline[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int last_refresh_completion_deadline[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern int forced_refresh_mode_on[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern int refresh_issue_deadline[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern int issued_forced_refresh_commands[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern int num_issued_refreshes[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
 
-long long int read_queue_length[MAX_NUM_CHANNELS];
-long long int write_queue_length[MAX_NUM_CHANNELS];
+extern long long int read_queue_length[MAX_NUM_CHANNELS];
+extern long long int write_queue_length[MAX_NUM_CHANNELS];
 
 // Stats
-long long int num_read_merge ;
-long long int num_write_merge ;
-long long int stats_reads_merged_per_channel[MAX_NUM_CHANNELS];
-long long int stats_writes_merged_per_channel[MAX_NUM_CHANNELS];
-long long int stats_reads_seen[MAX_NUM_CHANNELS];
-long long int stats_writes_seen[MAX_NUM_CHANNELS];
-long long int stats_reads_completed[MAX_NUM_CHANNELS];
-long long int stats_writes_completed[MAX_NUM_CHANNELS];
+extern long long int num_read_merge ;
+extern long long int num_write_merge ;
+extern long long int stats_reads_merged_per_channel[MAX_NUM_CHANNELS];
+extern long long int stats_writes_merged_per_channel[MAX_NUM_CHANNELS];
+extern long long int stats_reads_seen[MAX_NUM_CHANNELS];
+extern long long int stats_writes_seen[MAX_NUM_CHANNELS];
+extern long long int stats_reads_completed[MAX_NUM_CHANNELS];
+extern long long int stats_writes_completed[MAX_NUM_CHANNELS];
 
-double stats_average_read_latency[MAX_NUM_CHANNELS];
-double stats_average_read_queue_latency[MAX_NUM_CHANNELS];
-double stats_average_write_latency[MAX_NUM_CHANNELS];
-double stats_average_write_queue_latency[MAX_NUM_CHANNELS];
+extern double stats_average_read_latency[MAX_NUM_CHANNELS];
+extern double stats_average_read_queue_latency[MAX_NUM_CHANNELS];
+extern double stats_average_write_latency[MAX_NUM_CHANNELS];
+extern double stats_average_write_queue_latency[MAX_NUM_CHANNELS];
 
-long long int stats_page_hits[MAX_NUM_CHANNELS];
-double stats_read_row_hit_rate[MAX_NUM_CHANNELS];
+extern long long int stats_page_hits[MAX_NUM_CHANNELS];
+extern double stats_read_row_hit_rate[MAX_NUM_CHANNELS];
 
 // Time spent in various states
-long long int stats_time_spent_in_active_standby[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-long long int stats_time_spent_in_active_power_down[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-long long int stats_time_spent_in_precharge_power_down_fast[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-long long int stats_time_spent_in_precharge_power_down_slow[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-long long int stats_time_spent_in_power_up[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-long long int last_activate[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-long long int last_refresh[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-double average_gap_between_activates[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-double average_gap_between_refreshes[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-long long int stats_time_spent_terminating_reads_from_other_ranks[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-long long int stats_time_spent_terminating_writes_to_other_ranks[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int stats_time_spent_in_active_standby[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int stats_time_spent_in_active_power_down[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int stats_time_spent_in_precharge_power_down_fast[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int stats_time_spent_in_precharge_power_down_slow[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int stats_time_spent_in_power_up[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int last_activate[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int last_refresh[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern double average_gap_between_activates[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern double average_gap_between_refreshes[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int stats_time_spent_terminating_reads_from_other_ranks[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int stats_time_spent_terminating_writes_to_other_ranks[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
 
 // Command Counters
-long long int stats_num_activate_read[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
-long long int stats_num_activate_write[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
-long long int stats_num_activate_spec[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
-long long int stats_num_activate[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-long long int stats_num_precharge[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
-long long int stats_num_read[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
-long long int stats_num_write[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
-long long int stats_num_powerdown_slow[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-long long int stats_num_powerdown_fast[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
-long long int stats_num_powerup[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int stats_num_activate_read[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+extern long long int stats_num_activate_write[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+extern long long int stats_num_activate_spec[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+extern long long int stats_num_activate[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int stats_num_precharge[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+extern long long int stats_num_read[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+extern long long int stats_num_write[MAX_NUM_CHANNELS][MAX_NUM_RANKS][MAX_NUM_BANKS];
+extern long long int stats_num_powerdown_slow[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int stats_num_powerdown_fast[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
+extern long long int stats_num_powerup[MAX_NUM_CHANNELS][MAX_NUM_RANKS];
 
 
 
