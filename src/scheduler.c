@@ -44,65 +44,62 @@ int drain_writes[MAX_NUM_CHANNELS];
 
 void schedule(int channel)
 {
-	request_t * rd_ptr = NULL;
-	request_t * wr_ptr = NULL;
+	request_t *req = NULL;	    // iterator
+	request_t *best_req = NULL; // what we’ll finally issue
 
 
-	// if in write drain mode, keep draining writes until the
-	// write queue occupancy drops to LO_WM
-	if (drain_writes[channel] && (write_queue_length[channel] > LO_WM)) {
-	  drain_writes[channel] = 1; // Keep draining.
-	}
-	else {
-	  drain_writes[channel] = 0; // No need to drain.
-	}
+	//  Update drain_writes[channel] state (same logic as baseline)
+	if (drain_writes[channel] && (write_queue_length[channel] > LO_WM))
+		drain_writes[channel] = 1; // stay draining
+	else
+		drain_writes[channel] = 0; // stop draining
 
-	// initiate write drain if either the write queue occupancy
-	// has reached the HI_WM , OR, if there are no pending read
-	// requests
-	if(write_queue_length[channel] > HI_WM)
+	if (write_queue_length[channel] > HI_WM) // queue too full   
+		drain_writes[channel] = 1;	 // start drain    
+	else if (!read_queue_length[channel])	 // no reads pending 
+		drain_writes[channel] = 1;	 // drain writes
+
+	// Choose which queue we will look at this cycle
+
+	request_t **head = drain_writes[channel] ? &write_queue_head[channel] : &read_queue_head[channel];
+
+	// Pass 1 – find the oldest row-buffer hit whose command is issuable right now
+
+	LL_FOREACH(*head, req)
 	{
-		drain_writes[channel] = 1;
-	}
-	else {
-	  if (!read_queue_length[channel])
-	    drain_writes[channel] = 1;
-	}
+		if (!req->command_issuable)
+			continue;
 
-
-	// If in write drain mode, look through all the write queue
-	// elements (already arranged in the order of arrival), and
-	// issue the command for the first request that is ready
-	if(drain_writes[channel])
-	{
-
-		LL_FOREACH(write_queue_head[channel], wr_ptr)
+		if (req->next_command == COL_READ_CMD ||
+		    req->next_command == COL_WRITE_CMD)
 		{
-			if(wr_ptr->command_issuable)
+			best_req = req; // first issuable hit wins
+			break;
+		}
+	}
+
+	// Pass 2: if no row-hit, fall back to oldest issuable request
+
+	if (!best_req)
+	{
+		LL_FOREACH(*head, req)
+		{
+			if (req->command_issuable)
 			{
-				issue_request_command(wr_ptr);
+				best_req = req; // first legal cmd in list
 				break;
 			}
 		}
-		return;
 	}
 
-	// Draining Reads
-	// look through the queue and find the first request whose
-	// command can be issued in this cycle and issue it 
-	// Simple FCFS 
-	if(!drain_writes[channel])
+	//  Issue the chosen command (if any)
+	if (best_req)
 	{
-		LL_FOREACH(read_queue_head[channel],rd_ptr)
-		{
-			if(rd_ptr->command_issuable)
-			{
-				issue_request_command(rd_ptr);
-				break;
-			}
-		}
-		return;
+		issue_request_command(best_req);
+		return; // exactly one cmd per cycle
 	}
+
+	// Nothing issuable → remain idle this cycle (NOP)
 }
 
 void scheduler_stats()
