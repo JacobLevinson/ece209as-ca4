@@ -8,12 +8,12 @@
 extern long long int CYCLE_VAL;
 
 // write queue high water mark; begin draining writes if write queue exceeds this value
-#define HI_WM 40
+#define HI_WM 56
 
 // end write queue drain once write queue has this many writes in it
-#define LO_WM 20
+#define LO_WM 32
 
-#define ROW_IDLE 40 // cycles a row may stay open with no hits
+#define ROW_IDLE 64 // cycles a row may stay open with no hits
 
 // 1 means we are in write-drain mode for that channel
 int drain_writes[MAX_NUM_CHANNELS];

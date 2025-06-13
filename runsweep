@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+######################## 1.  Search space ################################
+HI_LIST=(24 32 40 48 56)          # edit as you wish
+LO_LIST=( 8 12 16 20 24 28 32)    # must be < matching HI
+ROW_LIST=(16 24 32 40 48 64)
+
+######################## 2.  Paths #######################################
+SRC_DIR=src
+SRC_FILE="$SRC_DIR/scheduler.c"
+BACKUP="$SRC_FILE.bak"
+LOG=sweep_results.csv
+
+######################## 3.  Utility functions ###########################
+patch_defines () {   # $1=HI $2=LO $3=ROW
+  sed -Ei \
+    "s/^#define[[:space:]]+HI_WM[[:space:]]+[0-9]+/#define HI_WM $1/;
+     s/^#define[[:space:]]+LO_WM[[:space:]]+[0-9]+/#define LO_WM $2/;
+     s/^#define[[:space:]]+ROW_IDLE[[:space:]]+[0-9]+/#define ROW_IDLE $3/" \
+     "$SRC_FILE"
+}
+
+rebuild () {
+  make -s -C "$SRC_DIR" clean && make -s -C "$SRC_DIR"
+}
+
+run_traces () {      # outputs two files used by get_edp()
+  bin/usimm input/1channel.cfg input/comm1 input/comm2 > output/c1-c2-tmp
+  bin/usimm input/1channel.cfg input/black input/freq  > output/bl-fr-tmp
+}
+
+get_edp () { grep "Energy Delay product" "$1" | awk '{print $(NF-1)}'; }
+
+######################## 4.  Setup #######################################
+cp "$SRC_FILE" "$BACKUP"
+echo "HI_WM,LO_WM,ROW_IDLE,EDP_c1c2,EDP_blfr,EDP_avg" > "$LOG"
+
+best_cfg="" ; best_edp=1e9
+
+######################## 5.  Sweep loop ##################################
+for HI in "${HI_LIST[@]}"; do
+  for LO in "${LO_LIST[@]}"; do
+    (( LO >= HI )) && continue
+    for ROW in "${ROW_LIST[@]}"; do
+      echo "▶ testing HI=$HI  LO=$LO  ROW_IDLE=$ROW"
+      patch_defines "$HI" "$LO" "$ROW"
+      rebuild
+      run_traces
+      edp1=$(get_edp output/c1-c2-tmp)
+      edp2=$(get_edp output/bl-fr-tmp)
+      avg=$(awk "BEGIN{print ($edp1+$edp2)/2}")
+      echo "$HI,$LO,$ROW,$edp1,$edp2,$avg" >> "$LOG"
+
+      if awk "BEGIN{exit !($avg < $best_edp)}"; then
+        best_edp=$avg
+        best_cfg="HI=$HI LO=$LO ROW_IDLE=$ROW"
+      fi
+    done
+  done
+done
+
+######################## 6.  Restore original source #####################
+mv "$BACKUP" "$SRC_FILE"
+rebuild
+
+echo
+echo "=========== sweep complete ==========="
+echo "Best config: $best_cfg  =>  Avg EDP = $best_edp"
+echo "Full results logged to $LOG"
